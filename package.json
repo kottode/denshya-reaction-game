@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "tsx src/App.test.ts"
   },
   "dependencies": {
     "@denshya/reactive": "^0.10.0",
@@ -13,6 +14,8 @@
     "type-fest": "^4.41.0"
   },
   "devDependencies": {
+    "@types/node": "^25.9.3",
+    "happy-dom": "^20.10.5",
     "typescript": "^5.9.3",
     "vite": "^5.4.21"
   }

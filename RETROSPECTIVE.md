@@ -113,19 +113,48 @@ When opened outside Telegram, `window.Telegram` is undefined. The app shows a fr
 
 ---
 
+## Bugs Found & Fixed
+
+### 🔥 Critical: `StateFSM` lacks `.to()` method
+
+**Symptom:** Blank screen in Telegram WebView.
+**Root cause:** Used `StateFSM<GameState>` for the game state machine, then called `fsm.to(state => ...)` inside JSX. `StateFSM` does NOT have `.to()` — only `State` does.
+**Runtime error:** `TypeError: t.to is not a function`
+**Fix:** Changed `new StateFSM<GameState>("idle")` → `new State<GameState>("idle")`
+
+**Lesson:** Always verify the API surface before using a class. `StateFSM` is for event-driven state machines (`.set()`, `.get()`), not for reactive JSX bindings (`.to()`).
+
+### Prevention: Automated Mount Test
+
+Added `src/App.test.ts` — a Node.js test that:
+1. Sets up `happy-dom` polyfill + Telegram WebApp mock
+2. Mounts the App with `WebInflator`
+3. Verifies DOM output (className, localStorage integration)
+
+Run: `npm test`
+
+**Test pattern (reusable for all Denshya apps):**
+```ts
+import "./test-setup"  // happy-dom + mocks FIRST
+const { WebInflator } = await import("@denshya/tama")  // dynamic import AFTER
+const { App } = await import("./App")
+const mounted = inflator.inflate(<App tg={mockTg} />)
+```
+
+---
+
 ## What Could Be Improved
 
 1. **Multi-round sessions** — Average of 5 rounds instead of individual taps
 2. **Difficulty levels** — Shorter green windows, distraction elements
 3. **Share scores** — `tg.sendData()` to bot for global leaderboard
 4. **Sound effects** — Web Audio API beeps synced with state changes
-5. **Animation polish** — CSS transitions for smoother state changes
 
 ---
 
 ## PR Proposals
 
-None for this cycle — the framework worked flawlessly. The Mini-App integration patterns are clean enough to document in the skill.
+None for this cycle — the framework worked correctly once the right class was used. The test infrastructure is worth documenting in the skill.
 
 ---
 
@@ -137,3 +166,5 @@ Added Telegram Mini-App section to `denshya-framework` skill covering:
 - CSS theming with `--tg-theme-*` variables
 - `sendData()` / `openLink()` patterns
 - Deployment via GitHub Pages
+- **StateFSM vs State** — `StateFSM` has no `.to()`, use `State` for reactive JSX
+- **Mount testing pattern** with `happy-dom` + dynamic imports
