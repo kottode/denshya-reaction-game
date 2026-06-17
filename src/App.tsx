@@ -1,5 +1,5 @@
 /// <reference types="@denshya/tama/jsx/virtual/jsx-runtime" />
-import { State, StateFSM } from "@denshya/reactive"
+import { State } from "@denshya/reactive"
 
 export interface AppProps {
   tg: TelegramWebApp
@@ -28,7 +28,7 @@ function saveScore(scores: ScoreEntry[]) {
 export function App(props: AppProps) {
   const tg = props.tg
 
-  const fsm = new StateFSM<GameState>("idle")
+  const fsm = new State<GameState>("idle")
   const reactionMs = new State(0)
   const scores = new State<ScoreEntry[]>(loadBestScores())
   const roundCount = new State(0)
