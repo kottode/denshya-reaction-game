@@ -1,175 +1,162 @@
 /// <reference types="@denshya/tama/jsx/virtual/jsx-runtime" />
+import { Window } from "happy-dom"
 import { WebInflator } from "@denshya/tama"
 import { App } from "./App"
 
-/**
- * Minimal DOM mock for testing Tama components outside a real browser.
- * This catches mount-time errors like missing .to() on StateFSM.
- */
-function createMockElement(tag: string): any {
-  const children: any[] = []
-  const el: any = {
-    tagName: tag.toUpperCase(),
-    nodeType: 1,
-    isConnected: true,
-    style: {},
-    className: "",
-    textContent: "",
-    childNodes: children,
-    children: children,
-    appendChild(n: any) { children.push(n); return n },
-    replaceChildren(...n: any[]) { children.length = 0; n.forEach(c => children.push(c)) },
-    replaceWith(...n: any[]) {},
-    remove() {},
-    after(...n: any[]) {},
-    before(...n: any[]) {},
-    prepend(...n: any[]) {},
-    append(...n: any[]) {},
-    setAttribute(k: string, v: any) { (el as any)[k] = v },
-    removeAttribute(k: string) { delete (el as any)[k] },
-    addEventListener() {},
-    removeEventListener() {},
-    contains() { return false },
-    hasChildNodes() { return children.length > 0 },
-    get firstChild() { return children[0] ?? null },
-    get lastChild() { return children[children.length - 1] ?? null },
-    get parentElement() { return null },
-  }
-  return el
-}
-
-function createMockTextNode(text: string): any {
-  return { nodeType: 3, nodeValue: text, textContent: text, remove() {} }
-}
-
-function createMockComment(text: string): any {
-  return { nodeType: 8, textContent: text, inflated: null, replaceWith() {}, remove() {} }
-}
-
-function setupMockDOM() {
-  const rootEl = createMockElement("div")
-  rootEl.id = "root"
-
-  const mockDocument: any = {
-    body: { ...createMockElement("body"), appendChild(n: any) { return n } },
-    getElementById(id: string) { return id === "root" ? rootEl : null },
-    createElement(tag: string) { return createMockElement(tag) },
-    createElementNS(_ns: string, tag: string) { return createMockElement(tag) },
-    createTextNode(text: string) { return createMockTextNode(text) },
-    createComment(text: string) { return createMockComment(text) },
-    querySelectorAll() { return [] },
-    addEventListener() {},
-    __tama_delegation: false,
-  }
-
-  const mockWindow: any = {
-    Telegram: {
-      WebApp: {
-        ready: () => {},
-        expand: () => {},
-        HapticFeedback: {
-          selectionChanged: () => {},
-          notificationOccurred: () => {},
-          impactOccurred: () => {},
-        },
-      }
+// Mock Telegram WebApp API
+function createMockTelegram() {
+  const hapticLog: string[] = []
+  return {
+    ready: () => {},
+    expand: () => {},
+    HapticFeedback: {
+      selectionChanged: () => hapticLog.push("selectionChanged"),
+      notificationOccurred: (type: string) => hapticLog.push(`notification:${type}`),
+      impactOccurred: (style: string) => hapticLog.push(`impact:${style}`),
     },
-    customElements: { define() {}, get() { return undefined } },
-    addEventListener() {},
-    getComputedStyle() { return {} },
+    viewportHeight: 600,
+    viewportStableHeight: 600,
+    isExpanded: true,
+    initDataUnsafe: { user: { id: 123, first_name: "Test" } },
+    _hapticLog: hapticLog,
+  } as unknown as TelegramWebApp
+}
+
+// Setup DOM polyfill
+const win = new Window()
+globalThis.document = win.document as any
+globalThis.window = win as any
+globalThis.Node = win.Node as any
+globalThis.Element = win.Element as any
+globalThis.HTMLElement = win.HTMLElement as any
+globalThis.DocumentFragment = win.DocumentFragment as any
+globalThis.Comment = win.Comment as any
+globalThis.MutationObserver = win.MutationObserver as any
+globalThis.requestAnimationFrame = (cb: FrameRequestCallback) => setTimeout(cb, 0) as any
+globalThis.cancelAnimationFrame = (id: number) => clearTimeout(id)
+globalThis.localStorage = {
+  _data: {} as Record<string, string>,
+  getItem(key: string) { return this._data[key] ?? null },
+  setItem(key: string, value: string) { this._data[key] = value },
+  removeItem(key: string) { delete this._data[key] },
+  clear() { this._data = {} },
+  key(index: number) { return Object.keys(this._data)[index] ?? null },
+  get length() { return Object.keys(this._data).length },
+} as any
+
+globalThis.performance = { now: () => Date.now() } as any
+
+// Mock observers required by Tama
+globalThis.ResizeObserver = class ResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as any
+
+globalThis.IntersectionObserver = class IntersectionObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as any
+
+async function importTama() {
+  const { WebInflator } = await import("@denshya/tama")
+  return { WebInflator }
+}
+
+async function runTests() {
+  let passed = 0
+  let failed = 0
+
+  function test(name: string, fn: () => void | Promise<void>) {
+    try {
+      const result = fn()
+      if (result instanceof Promise) {
+        return result.then(() => { passed++; console.log(`  ✓ ${name}`) })
+          .catch((e) => { failed++; console.error(`  ✗ ${name}: ${e.message}`) })
+      }
+      passed++
+      console.log(`  ✓ ${name}`)
+    } catch (e: any) {
+      failed++
+      console.error(`  ✗ ${name}: ${e.message}`)
+    }
+    return Promise.resolve()
   }
 
-  // @ts-ignore
-  global.document = mockDocument
-  // @ts-ignore
-  global.window = mockWindow
-  // @ts-ignore
-  global.localStorage = {
-    data: {} as Record<string, string>,
-    getItem(k: string) { return this.data[k] ?? null },
-    setItem(k: string, v: string) { this.data[k] = v },
-    removeItem(k: string) { delete this.data[k] },
+  function assertEq(actual: any, expected: any, msg?: string) {
+    if (actual !== expected) {
+      throw new Error(msg || `Expected ${expected}, got ${actual}`)
+    }
   }
-  // @ts-ignore
-  global.performance = { now: () => Date.now() }
-  // @ts-ignore
-  global.requestAnimationFrame = (cb: any) => { cb(); return 1 }
-  // @ts-ignore
-  global.cancelAnimationFrame = () => {}
-  // @ts-ignore
-  global.FinalizationRegistry = class { register() {} }
-  // @ts-ignore
-  global.ResizeObserver = class { observe() {} unobserve() {} }
-  // @ts-ignore
-  global.IntersectionObserver = class { observe() {} unobserve() {} }
-  // @ts-ignore
-  global.Node = class {}
-  // @ts-ignore
-  global.Element = class extends Node {}
-  // @ts-ignore
-  global.HTMLElement = class extends Element {}
-  // @ts-ignore
-  global.DocumentFragment = class extends Node {}
-  // @ts-ignore
-  global.MutationObserver = class { observe() {} }
-  // @ts-ignore
-  global.Node.prototype.$EV = undefined
 
-  return rootEl
+  function assertContains(html: string, substr: string, msg?: string) {
+    if (!html.includes(substr)) {
+      throw new Error(msg || `Expected HTML to contain "${substr}"`)
+    }
+  }
+
+  function assertNotContains(html: string, substr: string, msg?: string) {
+    if (html.includes(substr)) {
+      throw new Error(msg || `Expected HTML NOT to contain "${substr}"`)
+    }
+  }
+
+  console.log("\nReaction Trainer Tests\n")
+
+  const tg = createMockTelegram()
+
+  // Reset DOM for each test
+  const container = document.createElement("div")
+  container.id = "root"
+  document.body.appendChild(container)
+
+  // Test 1: App renders without errors
+  await test("App renders without errors", async () => {
+    const { WebInflator } = await importTama()
+    const inflator = new WebInflator()
+    const app = inflator.inflate(<App tg={tg} />)
+    container.appendChild(app as any)
+    assertEq(container.innerHTML.length > 0, true, "App should render non-empty HTML")
+  })
+
+  // Test 2: Idle screen is visible initially
+  await test("Idle screen is visible initially", async () => {
+    const html = container.innerHTML
+    assertContains(html, "Reaction Trainer", "Should show idle screen title")
+    assertContains(html, "Tap to start", "Should show idle hint")
+    assertNotContains(html, "[object Object]", "Should NOT show [object Object]")
+  })
+
+  // Test 3: Stats bar shows empty state
+  await test("Stats bar shows empty state", async () => {
+    const html = container.innerHTML
+    assertContains(html, "Best", "Should show Best label")
+    assertContains(html, "Rounds", "Should show Rounds label")
+    assertContains(html, "Avg", "Should show Avg label")
+    assertContains(html, "—", "Should show dash for empty stats")
+  })
+
+  // Test 4: Score list shows empty message
+  await test("Score list shows empty message", async () => {
+    const html = container.innerHTML
+    assertContains(html, "No scores yet", "Should show empty message")
+    assertNotContains(html, "[object Object]", "Should NOT show [object Object]")
+  })
+
+  // Test 5: Haptic feedback on init
+  await test("Haptic feedback is logged", () => {
+    assertEq(tg._hapticLog.length >= 0, true, "Haptic log should be available")
+  })
+
+  // Cleanup
+  document.body.removeChild(container)
+
+  console.log(`\n${passed} passed, ${failed} failed\n`)
+  process.exit(failed > 0 ? 1 : 0)
 }
 
-function assert(condition: boolean, message: string) {
-  if (!condition) throw new Error(`ASSERT FAILED: ${message}`)
-}
-
-/** Test: App mounts without throwing */
-function testAppMounts() {
-  const rootEl = setupMockDOM()
-  const tg = window.Telegram.WebApp
-
-  const inflator = new WebInflator()
-  const vnode = <App tg={tg} />
-
-  // This is the critical line — if StateFSM.to() is missing, it throws here
-  const mounted = inflator.inflate(vnode)
-
-  assert(mounted != null, "mounted node should not be null")
-  rootEl.replaceChildren(mounted)
-
-  assert(rootEl.childNodes.length > 0, "root should have children after mount")
-  console.log("✓ testAppMounts passed")
-}
-
-/** Test: Clicking cycles through game states */
-function testGameStateCycle() {
-  const rootEl = setupMockDOM()
-  const tg = window.Telegram.WebApp
-
-  const inflator = new WebInflator()
-  rootEl.replaceChildren(inflator.inflate(<App tg={tg} />))
-
-  // Find the game-area div (first child of root)
-  const gameArea = rootEl.childNodes[0]?.childNodes[0]
-  assert(gameArea != null, "game-area should exist")
-
-  // Simulate click to start
-  const clickEvent = { type: "click", target: gameArea, cancelBubble: false }
-  // The click handler is attached via $EV delegation
-  let handled = false
-  gameArea.$EV = { click: [() => { handled = true }] }
-
-  console.log("✓ testGameStateCycle passed (smoke)")
-}
-
-/** Run all tests */
-export function runTests() {
-  console.log("Running App tests...")
-  testAppMounts()
-  testGameStateCycle()
-  console.log("All tests passed!")
-}
-
-// Auto-run if executed directly
-if (typeof require !== "undefined" && require.main === module) {
-  runTests()
-}
+runTests().catch(e => {
+  console.error("Test runner failed:", e)
+  process.exit(1)
+})

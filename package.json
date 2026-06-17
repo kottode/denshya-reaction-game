@@ -4,9 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && sed -i 's|<script type=\"module\" crossorigin src=\"|<script src=\"|g' dist/index.html",
     "preview": "vite preview",
-    "test": "tsx src/App.test.ts"
+    "test": "tsx src/App.test.tsx"
   },
   "dependencies": {
     "@denshya/reactive": "^0.10.0",
@@ -16,6 +16,7 @@
   "devDependencies": {
     "@types/node": "^25.9.3",
     "happy-dom": "^20.10.5",
+    "tsx": "^4.22.4",
     "typescript": "^5.9.3",
     "vite": "^5.4.21"
   }
